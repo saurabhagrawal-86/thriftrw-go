@@ -21,6 +21,7 @@
 package binary
 
 import (
+	"bufio"
 	"io"
 	"math"
 	"sync"
@@ -33,10 +34,16 @@ var streamWriterPool = sync.Pool{
 		return &StreamWriter{}
 	}}
 
+
+var bufWriterPool = sync.Pool{
+	New: func() interface{} {
+		return &bufio.Writer{}
+	},
+}
 // StreamWriter implements basic logic for writing the Thrift Binary Protocol
 // to an io.Writer.
 type StreamWriter struct {
-	writer io.Writer
+	writer io.Writer // TODO - change to *bufio.Writer
 
 	// This buffer is re-used every time we need a slice of up to 8 bytes.
 	buffer [8]byte
@@ -47,16 +54,25 @@ type StreamWriter struct {
 //
 // This StreamWriter must be returned back using ReturnStreamWriter.
 func NewStreamWriter(w io.Writer) *StreamWriter {
+	bufWriter := bufWriterPool.Get().(*bufio.Writer)
+	bufWriter.Reset(w)
 	streamWriter := streamWriterPool.Get().(*StreamWriter)
-	streamWriter.writer = w
+	streamWriter.writer = bufWriter
 	return streamWriter
 }
 
 // returnStreamWriter returns a previously borrowed StreamWriter back to the
 // system.
-func returnStreamWriter(sw *StreamWriter) {
+func returnStreamWriter(sw *StreamWriter) error {
+	bufWriter := sw.writer.(*bufio.Writer)
+	if err := bufWriter.Flush(); err != nil {
+		return err
+	}
+	bufWriterPool.Put(bufWriter)
+
 	sw.writer = nil
 	streamWriterPool.Put(sw)
+	return nil
 }
 
 func (sw *StreamWriter) write(bs []byte) error {
@@ -231,6 +247,5 @@ func (sw *StreamWriter) WriteMapEnd() error {
 // Close frees up the resources used by the StreamWriter and returns it back
 // to the pool.
 func (sw *StreamWriter) Close() error {
-	returnStreamWriter(sw)
-	return nil
+	return returnStreamWriter(sw)
 }
