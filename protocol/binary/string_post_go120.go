@@ -23,7 +23,11 @@
 
 package binary
 
-import "unsafe"
+import (
+	"io"
+	"strings"
+	"unsafe"
+)
 
 // ReadString reads a Thrift encoded string.
 func (sr *StreamReader) ReadString() (string, error) {
@@ -41,4 +45,39 @@ func (sw *StreamWriter) WriteString(s string) error {
 
 	b := unsafe.Slice(unsafe.StringData(s), len(s))
 	return sw.write(b)
+}
+
+func (sr *StreamReader) readStringUnsafe() (string, error) {
+	bs, err := sr.ReadBinary()
+	// It is safe to use "unsafe" here because there are no
+	// mutable references to bs.
+	return unsafe.String(unsafe.SliceData(bs), len(bs)), err
+}
+
+func (sr *StreamReader) readStringOrig() (string, error) {
+	bs, err := sr.ReadBinary()
+	return string(bs), err
+}
+
+func (sr *StreamReader) readStringBuilderCopyN() (string, error) {
+	length, err := sr.ReadInt32()
+	if err != nil {
+		return "", err
+	}
+
+	if length < 0 {
+		return "", decodeErrorf("negative length %v specified for binary field", length)
+	}
+
+	if length == 0 {
+		return "", nil
+	}
+
+	var b strings.Builder
+	_, err = io.CopyN(&b, sr.reader, int64(length))
+	if err != nil {
+		return "", err
+	}
+
+	return b.String(), nil
 }
