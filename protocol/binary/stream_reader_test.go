@@ -43,8 +43,25 @@ func BenchmarkReadString(b *testing.B) {
 	defer sr.Close()
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		sr.ReadString()
-		enc.Seek(0, io.SeekStart)
-	}
+
+	b.Run("original", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			sr.readStringOrig()
+			enc.Seek(0, io.SeekStart)
+		}
+	})
+
+	b.Run("unsafe", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			sr.readStringUnsafe()
+			enc.Seek(0, io.SeekStart)
+		}
+	})
+
+	b.Run("builder_copyN", func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			sr.readStringBuilderCopyN()
+			enc.Seek(0, io.SeekStart)
+		}
+	})
 }
